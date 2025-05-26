@@ -1,13 +1,14 @@
 package com.projetpoo.demotpfinale.Serialisation;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.projetpoo.demotpfinale.modele.Evenement;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -19,43 +20,37 @@ public class EvenementDeserializer {
         this.filePath = filePath.trim();
         this.objectMapper = new ObjectMapper();
         this.objectMapper.registerModule(new JavaTimeModule());
-        this.objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
         System.out.println("Deserializer initialized with path: " + new File(filePath).getAbsolutePath());
     }
 
     public Map<String, Evenement> deserialize() throws IOException {
         File file = new File(filePath);
         System.out.println("Deserializing from: " + file.getAbsolutePath());
+        System.out.println("File exists: " + file.exists() + ", Size: " + file.length() + " bytes");
 
         if (!file.exists() || file.length() == 0) {
-            System.out.println("File not found or empty, returning empty map: " + filePath);
-            File parentDir = file.getParentFile();
-            if (parentDir != null && !parentDir.exists()) {
-                parentDir.mkdirs();
-            }
+            System.out.println("File not found or empty, returning empty map");
             return new HashMap<>();
         }
 
+        if (!file.canRead()) {
+            throw new IOException("File is not readable: " + file.getAbsolutePath());
+        }
+
         try {
-            String content = new String(java.nio.file.Files.readAllBytes(file.toPath()));
-            System.out.println("File content: " + content);
-
-            TypeReference<Map<String, Evenement>> typeRef = new TypeReference<Map<String, Evenement>>() {};
-            Map<String, Evenement> events = objectMapper.readValue(file, typeRef);
-
+            String content = Files.readString(file.toPath(), StandardCharsets.UTF_8);
+            System.out.println("File content: [" + content + "]");
+            Map<String, Evenement> events = objectMapper.readValue(content, new TypeReference<Map<String, Evenement>>() {});
             System.out.println("Deserialized " + events.size() + " events");
             for (Map.Entry<String, Evenement> entry : events.entrySet()) {
-                Evenement evt = entry.getValue();
-                System.out.println("Loaded event: " + entry.getKey() + " - " + evt.getNom() +
-                        " (" + evt.getClass().getSimpleName() + ") on " + evt.getDate());
+                System.out.println("Event: ID=" + entry.getKey() + ", Name=" + entry.getValue().getNom() +
+                        ", Type=" + entry.getValue().getClass().getSimpleName());
             }
             return events;
-
         } catch (Exception e) {
             System.err.println("Deserialization failed: " + e.getMessage());
             e.printStackTrace();
-            // Pas de backup, renvoyer une map vide
-            return new HashMap<>();
+            throw new IOException("Failed to deserialize events: " + e.getMessage(), e);
         }
     }
 }

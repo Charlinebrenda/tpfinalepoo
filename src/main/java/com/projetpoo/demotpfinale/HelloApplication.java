@@ -23,8 +23,8 @@ public class HelloApplication extends Application {
         // Créer un organisateur de test
         Organisateur organisateur = new Organisateur(
                 "ORG001",
-                "Jean Dupont",
-                "jean.dupont@organisation.fr",
+                "Charline",
+                "charline@organisation.fr",
                 new ArrayList<>()
         );
 

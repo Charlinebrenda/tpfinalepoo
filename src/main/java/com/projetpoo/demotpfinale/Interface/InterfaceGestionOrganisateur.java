@@ -1,4 +1,5 @@
 package com.projetpoo.demotpfinale.Interface;
+
 import com.projetpoo.demotpfinale.Exception.CapaciteMaxAtteinteException;
 import com.projetpoo.demotpfinale.modele.*;
 import com.projetpoo.demotpfinale.Serialisation.EvenementSerializer;
@@ -16,6 +17,7 @@ import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.application.Platform;
 
+import java.io.File;
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -36,7 +38,7 @@ public class InterfaceGestionOrganisateur extends VBox {
     private final EvenementSerializer serializer;
     private final EvenementDeserializer deserializer;
 
-    public InterfaceGestionOrganisateur(Organisateur organisateur) {
+    public InterfaceGestionOrganisateur(Organisateur organisateur) throws IOException {
         this.organisateurConnecte = organisateur;
         this.setSpacing(15);
         this.setPadding(new Insets(20));
@@ -50,7 +52,6 @@ public class InterfaceGestionOrganisateur extends VBox {
 
         construireInterface();
 
-        // Charger les événements de manière asynchrone pour éviter le blocage de l'interface
         Platform.runLater(() -> {
             loadFromFile();
             actualiserListeEvenements();
@@ -273,11 +274,25 @@ public class InterfaceGestionOrganisateur extends VBox {
         return true;
     }
 
+
+    private void ajouterEvenementAvecSauvegarde(String id, Evenement evenement) throws IOException {
+        try {
+            System.out.println("Adding event: ID=" + id + ", Name=" + evenement.getNom());
+            Map<String, Evenement> nouveauxEvenements = new HashMap<>();
+            nouveauxEvenements.put(id, evenement);
+            evenements.put(id, evenement); // Mettre à jour la map locale
+            serializer.serialize(nouveauxEvenements);
+            System.out.println("Event added and serialized successfully");
+        } catch (IOException e) {
+            System.err.println("Failed to add event: " + e.getMessage());
+            throw e;
+        }
+    }
     private void creerEvenement() {
         if (!validerSaisie()) return;
 
         try {
-            String id = "EVT" + System.currentTimeMillis(); // ID unique basé sur le timestamp
+            String id = "EVT" + System.currentTimeMillis();
             String nom = txtNomEvenement.getText().trim();
             LocalDateTime date = datePicker.getValue().atTime(
                     Integer.parseInt(cmbHeures.getValue()), Integer.parseInt(cmbMinutes.getValue()));
@@ -294,12 +309,14 @@ public class InterfaceGestionOrganisateur extends VBox {
                 evt = new ConcertImpl(id, nom, date, lieu, capacite, txtSpecialite.getText().trim(), txtGenreMusical.getText().trim());
             }
 
-            evenements.put(id, evt);
+            System.out.println("Création de l'événement: " + id + " - " + nom);
+
+            // Ajouter et sauvegarder
+            ajouterEvenementAvecSauvegarde(id, evt);
+
+            // Mettre à jour les autres composants
             gestionEvenement.ajouterEvenement(evt);
             organisateurConnecte.getEvenementsOrganises().add(evt);
-
-            System.out.println("Event created: " + id + " - " + nom);
-
 
             interfaceNotifications.ajouterNotificationIndividuelle("Événement créé: " + nom, organisateurConnecte.getEmail());
             afficherMessage("Événement créé: " + nom, Color.GREEN);
@@ -323,25 +340,33 @@ public class InterfaceGestionOrganisateur extends VBox {
         String id = selection.split(" - ")[0];
         Evenement evt = evenements.get(id);
         if (evt != null) {
-            evt.setNom(txtNomEvenement.getText().trim());
-            evt.setLieu(txtLieu.getText().trim());
-            evt.setDate(datePicker.getValue().atTime(
-                    Integer.parseInt(cmbHeures.getValue()), Integer.parseInt(cmbMinutes.getValue())));
-            evt.setCapaciteMax(Integer.parseInt(txtCapacite.getText()));
+            try {
+                evt.setNom(txtNomEvenement.getText().trim());
+                evt.setLieu(txtLieu.getText().trim());
+                evt.setDate(datePicker.getValue().atTime(
+                        Integer.parseInt(cmbHeures.getValue()), Integer.parseInt(cmbMinutes.getValue())));
+                evt.setCapaciteMax(Integer.parseInt(txtCapacite.getText()));
 
-            if (evt instanceof Conference conf && "Conference".equals(cmbTypeEvenement.getValue())) {
-                conf.setTheme(txtSpecialite.getText().trim());
-                conf.setIntervenants((txtIntervenants.getText() == null || txtIntervenants.getText().isBlank()) ?
-                        new ArrayList<>() : Arrays.asList(txtIntervenants.getText().split("\n")));
-            } else if (evt instanceof Concert conc && "Concert".equals(cmbTypeEvenement.getValue())) {
-                conc.setArtiste(txtSpecialite.getText().trim());
-                conc.setGenreMusical(txtGenreMusical.getText().trim());
+                if (evt instanceof Conference conf && "Conference".equals(cmbTypeEvenement.getValue())) {
+                    conf.setTheme(txtSpecialite.getText().trim());
+                    conf.setIntervenants((txtIntervenants.getText() == null || txtIntervenants.getText().isBlank()) ?
+                            new ArrayList<>() : Arrays.asList(txtIntervenants.getText().split("\n")));
+                } else if (evt instanceof Concert conc && "Concert".equals(cmbTypeEvenement.getValue())) {
+                    conc.setArtiste(txtSpecialite.getText().trim());
+                    conc.setGenreMusical(txtGenreMusical.getText().trim());
+                }
+
+                // Sauvegarder les modifications
+                saveToFileRobuste();
+
+                interfaceNotifications.ajouterNotificationIndividuelle("Événement modifié: " + evt.getNom(), organisateurConnecte.getEmail());
+                afficherMessage("Événement modifié", Color.GREEN);
+                actualiserListeEvenements();
+
+            } catch (Exception e) {
+                e.printStackTrace();
+                afficherMessage("Erreur lors de la modification: " + e.getMessage(), Color.RED);
             }
-
-            saveToFile();
-            interfaceNotifications.ajouterNotificationIndividuelle("Événement modifié: " + evt.getNom(), organisateurConnecte.getEmail());
-            afficherMessage("Événement modifié", Color.GREEN);
-            actualiserListeEvenements();
         }
     }
 
@@ -355,16 +380,24 @@ public class InterfaceGestionOrganisateur extends VBox {
         String id = selection.split(" - ")[0];
         Evenement evt = evenements.get(id);
         if (evt != null) {
-            evenements.remove(id);
-            gestionEvenement.supprimerEvenement(id);
-            organisateurConnecte.getEvenementsOrganises().remove(evt);
+            try {
+                evenements.remove(id);
+                gestionEvenement.supprimerEvenement(id);
+                organisateurConnecte.getEvenementsOrganises().remove(evt);
 
-            saveToFile();
-            interfaceNotifications.ajouterNotificationIndividuelle("Événement annulé: " + evt.getNom(), organisateurConnecte.getEmail());
-            afficherMessage("Événement annulé", Color.GREEN);
-            actualiserListeEvenements();
-            txtDetailsEvenement.clear();
-            clearFields();
+                // Sauvegarder la suppression
+                saveToFileRobuste();
+
+                interfaceNotifications.ajouterNotificationIndividuelle("Événement annulé: " + evt.getNom(), organisateurConnecte.getEmail());
+                afficherMessage("Événement annulé", Color.GREEN);
+                actualiserListeEvenements();
+                txtDetailsEvenement.clear();
+                clearFields();
+
+            } catch (Exception e) {
+                e.printStackTrace();
+                afficherMessage("Erreur lors de l'annulation: " + e.getMessage(), Color.RED);
+            }
         }
     }
 
@@ -382,14 +415,21 @@ public class InterfaceGestionOrganisateur extends VBox {
         if (evt != null) {
             try {
                 evt.ajouterparticipant("Participant (" + email + ")");
-                saveToFile();
+
+                // Sauvegarder l'ajout de participant
+                saveToFileRobuste();
+
                 interfaceNotifications.ajouterNotificationIndividuelle("Inscrit à: " + evt.getNom(), email);
                 afficherMessage("Participant ajouté", Color.GREEN);
                 txtNouveauParticipant.clear();
                 actualiserListeEvenements();
                 chargerDetails(selection);
+
             } catch (CapaciteMaxAtteinteException e) {
                 afficherMessage("Capacité maximale atteinte", Color.RED);
+            } catch (Exception e) {
+                e.printStackTrace();
+                afficherMessage("Erreur lors de l'ajout du participant: " + e.getMessage(), Color.RED);
             }
         }
     }
@@ -416,11 +456,19 @@ public class InterfaceGestionOrganisateur extends VBox {
         });
     }
 
+    private void saveToFileRobuste() throws IOException {
+        try {
+            System.out.println("Saving " + evenements.size() + " events");
+            serializer.serialize(new HashMap<>(evenements));
+            System.out.println("Events saved successfully");
+        } catch (IOException e) {
+            System.err.println("Failed to save events: " + e.getMessage());
+            throw e;
+        }
+    }
     public void saveToFile() {
         try {
-            System.out.println("Saving " + evenements.size() + " events to file");
-            serializer.serialize(evenements);
-            System.out.println("Save completed successfully");
+            saveToFileRobuste();
         } catch (IOException e) {
             e.printStackTrace();
             afficherMessage("Erreur de sauvegarde: " + e.getMessage(), Color.RED);
@@ -430,17 +478,20 @@ public class InterfaceGestionOrganisateur extends VBox {
     private void loadFromFile() {
         try {
             System.out.println("Loading events from file...");
-            Map<String, Evenement> loaded = deserializer.deserialize();
+            Map<String, Evenement> loadedEvents = deserializer.deserialize();
             evenements.clear();
-            evenements.putAll(loaded);
+            evenements.putAll(loadedEvents);
             gestionEvenement = GestionEvenement.getInstance(evenements);
             organisateurConnecte.getEvenementsOrganises().clear();
             organisateurConnecte.getEvenementsOrganises().addAll(evenements.values());
-            System.out.println("Successfully loaded " + evenements.size() + " events");
+            System.out.println("Loaded " + evenements.size() + " events");
             afficherMessage("Chargé " + evenements.size() + " événements", Color.GREEN);
         } catch (IOException e) {
+            System.err.println("Failed to load events: " + e.getMessage());
             e.printStackTrace();
             afficherMessage("Erreur de chargement: " + e.getMessage(), Color.RED);
         }
     }
+
+    // ... (reste des méthodes inchangées : creerEvenement, modifierEvenement, annulerEvenement, ajouterParticipant)
 }

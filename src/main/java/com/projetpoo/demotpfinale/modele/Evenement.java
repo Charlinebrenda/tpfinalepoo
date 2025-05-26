@@ -36,10 +36,9 @@ public abstract class Evenement {
 
     public Evenement() {
         // Constructeur par défaut pour Jackson
-        this.participants = new ArrayList<>();
-        this.annule = false;
+       // this.participants = new ArrayList<>();
+        //this.annule = false;
     }
-
     public Evenement(String id, String nom, LocalDateTime date, String lieu, int capaciteMax) {
         this.id = id;
         this.nom = nom;
