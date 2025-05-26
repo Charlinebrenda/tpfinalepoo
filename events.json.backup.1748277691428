@@ -1,0 +1,13 @@
+{
+  "EVT1748276550269" : {
+    "id" : "EVT1748276550269",
+    "nom" : "rolemodele",
+    "date" : "2025-05-09T09:30:00",
+    "lieu" : "salledesactes",
+    "capaciteMax" : 15,
+    "participants" : [ ],
+    "annule" : false,
+    "Theme" : "modele",
+    "Intervenants" : [ "Dr pettang" ]
+  }
+}
